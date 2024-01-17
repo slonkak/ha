@@ -2,7 +2,7 @@
 
 # TODO: GUI, tiled buttons on multiple rows.  Last button split into settings/rescan.  Constant updating of lock status.  Settings has url, token, refresh rate, save, cancel.
 
-import os, yaml, math, datetime, time
+import os, yaml, math, datetime, time, requests, json
 import tkinter as tk                        # GUI
 import screeninfo                           # Work with multiple monitors
 
@@ -17,7 +17,7 @@ try:
 except ImportError:
     from yaml import Loader
 
-lowBattery = 30
+lowBattery = 20
 refreshRate = 30000
 
 #
@@ -28,10 +28,6 @@ def drawscreen():
     # Reset the timer for refreshing the screen
     if window.aid is not None:
         window.after_cancel(window.aid)
-
-    # If any widgets exist in the window, delete them (needed for looping)
-    for w in window.winfo_children():
-        w.destroy()
 
     # Declare these outside of the try/catch so the values persist even
     # when the Client dies
@@ -45,12 +41,16 @@ def drawscreen():
             # locks into a new dictionary, but the actual lock entities are
             # in the "entities" attribute, so further drill down to that
             locks = {key: value for key, value in client.get_entities()["lock"]}["entities"]
-
+            #print(locks)
             # Calc button dimensions
             countlocks = len(locks)
             rowlen = int(math.ceil(countlocks/2))
             buttonw = int(screenw / rowlen)
             buttonh = int(screenh / 2)
+            
+            # If any widgets exist in the window, delete them (needed for looping)
+            for w in window.winfo_children():
+                w.destroy()
 
             r=0
             c=0
@@ -95,12 +95,21 @@ def drawscreen():
 def togglelock(eid):
     try:
         with Client(api_url, token) as client:
-            l = client.get_entity(entity_id=eid)
-            #d = client.trigger_service(domain="lock", service="unlock", service_data="{\"target\": {\"entity_id\": eid}}")
-            #print(d)
+            h = {'Authorization': 'Bearer ' + token, 'Content-Type':'application/json'}
+            d = {'entity_id':  eid}
+
+            if client.get_entity(entity_id=eid).state.state.lower() == 'locked':
+                #unlock
+                r = requests.post(api_url + '/services/lock/unlock', headers=h, data=json.dumps(d))
+                print(r)
+            else:
+                #lock
+                r = requests.post(api_url + '/services/lock/lock', headers=h, data=json.dumps(d))
+                print(r)
+
             drawscreen()
     except SSLError as e:
-        print("error")
+        print("e")
 
 def redraw():
     drawscreen()
@@ -131,7 +140,7 @@ if __name__ == '__main__':                  # Make sure we're not imported
 
     # Draw the main window
     window = tk.Tk()
-    window.attributes('-fullscreen', True)
+    window.attributes('-fullscreen', False)
     window.title("Door Manager")
     window.aid = None
     cur_mon = get_mon_from_xy(window.winfo_x(), window.winfo_y())
